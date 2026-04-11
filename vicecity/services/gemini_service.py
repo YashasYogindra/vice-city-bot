@@ -1,0 +1,306 @@
+from __future__ import annotations
+
+import json
+import logging
+from typing import TYPE_CHECKING, Any
+
+import aiohttp
+
+from vicecity.models.cinematic import GeminiInformantTipResult, GeminiNarrationResult, GeminiNegotiationResult
+from vicecity.models.events import GeminiCityEventResult
+
+if TYPE_CHECKING:
+    from vicecity.bot import ViceCityBot
+
+
+class GeminiService:
+    def __init__(self, bot: "ViceCityBot") -> None:
+        self.bot = bot
+        self.logger = logging.getLogger("vicecity.gemini")
+        self.last_request_status = "No Gemini request yet."
+
+    async def generate_bust_negotiation(
+        self,
+        *,
+        member_name: str,
+        gang_name: str,
+        operation_name: str,
+        risk: str,
+        approach: str,
+        plea_text: str,
+        allowed_outcomes: tuple[str, ...],
+    ) -> GeminiNegotiationResult:
+        fallback = self._fallback_negotiation(
+            member_name=member_name,
+            gang_name=gang_name,
+            operation_name=operation_name,
+            approach=approach,
+            allowed_outcomes=allowed_outcomes,
+        )
+        payload = {
+            "member_name": member_name,
+            "gang_name": gang_name,
+            "operation_name": operation_name,
+            "risk": risk,
+            "approach": approach,
+            "plea_text": plea_text,
+            "allowed_outcomes": list(allowed_outcomes),
+        }
+        prompt = (
+            "You are writing a dramatic Vice City police negotiation scene for a Discord bot. "
+            "Return strict JSON only with keys outcome, headline, scene, officer_line. "
+            "The outcome must be exactly one of the allowed outcomes. "
+            "Keep the tone cinematic, sharp, and under 70 words per field.\n\n"
+            f"Context: {json.dumps(payload, ensure_ascii=True)}"
+        )
+        text = await self._generate_json_text(prompt)
+        if text is None:
+            return fallback
+        try:
+            raw = self._parse_json(text)
+            outcome = str(raw.get("outcome", "")).strip()
+            headline = str(raw.get("headline", "")).strip()
+            scene = str(raw.get("scene", "")).strip()
+            officer_line = str(raw.get("officer_line", "")).strip()
+            if outcome not in allowed_outcomes:
+                raise ValueError(f"Unsupported outcome: {outcome}")
+            if not headline or not scene or not officer_line:
+                raise ValueError("Incomplete Gemini negotiation payload")
+            return GeminiNegotiationResult(
+                outcome=outcome,
+                headline=headline,
+                scene=scene,
+                officer_line=officer_line,
+            )
+        except Exception:
+            self.last_request_status = "Fallback used: invalid Gemini negotiation JSON."
+            self.logger.exception("Failed to parse Gemini bust negotiation payload")
+            return fallback
+
+    async def generate_heist_narration(
+        self,
+        *,
+        phase: str,
+        gang_name: str,
+        crew_names: list[str],
+        success_count: int | None = None,
+        payout_total: int | None = None,
+    ) -> GeminiNarrationResult:
+        fallback = self._fallback_heist(
+            phase=phase,
+            gang_name=gang_name,
+            crew_names=crew_names,
+            success_count=success_count,
+            payout_total=payout_total,
+        )
+        payload = {
+            "phase": phase,
+            "gang_name": gang_name,
+            "crew_names": crew_names,
+            "success_count": success_count,
+            "payout_total": payout_total,
+        }
+        prompt = (
+            "You are narrating a cinematic Vice City casino heist for Discord. "
+            "Return strict JSON only with keys headline and lines. "
+            "lines must be an array of 2 or 3 dramatic one-sentence updates. "
+            "Keep each line under 25 words, punchy, and PG-13.\n\n"
+            f"Context: {json.dumps(payload, ensure_ascii=True)}"
+        )
+        text = await self._generate_json_text(prompt)
+        if text is None:
+            return fallback
+        try:
+            raw = self._parse_json(text)
+            headline = str(raw.get("headline", "")).strip()
+            lines = [str(line).strip() for line in raw.get("lines", []) if str(line).strip()]
+            if not headline or not lines:
+                raise ValueError("Incomplete Gemini heist payload")
+            return GeminiNarrationResult(headline=headline, lines=lines[:3])
+        except Exception:
+            self.last_request_status = "Fallback used: invalid Gemini heist JSON."
+            self.logger.exception("Failed to parse Gemini heist narration payload")
+            return fallback
+
+    async def generate_informant_tip(
+        self,
+        *,
+        focus: str,
+        facts: list[str],
+        fallback: GeminiInformantTipResult,
+    ) -> GeminiInformantTipResult:
+        payload = {
+            "focus": focus,
+            "facts": facts,
+        }
+        prompt = (
+            "You are a cryptic Vice City street informant speaking inside a Discord crime game. "
+            "Return strict JSON only with keys headline, tip, nudge. "
+            "Use only the supplied facts. Do not invent numbers or events. "
+            "Keep it cinematic, actionable, under 45 words per field, and sound like whispered street intel.\n\n"
+            f"Context: {json.dumps(payload, ensure_ascii=True)}"
+        )
+        text = await self._generate_json_text(prompt)
+        if text is None:
+            return fallback
+        try:
+            raw = self._parse_json(text)
+            headline = str(raw.get("headline", "")).strip()
+            tip = str(raw.get("tip", "")).strip()
+            nudge = str(raw.get("nudge", "")).strip()
+            if not headline or not tip or not nudge:
+                raise ValueError("Incomplete Gemini informant payload")
+            return GeminiInformantTipResult(headline=headline, tip=tip, nudge=nudge)
+        except Exception:
+            self.last_request_status = "Fallback used: invalid Gemini informant JSON."
+            self.logger.exception("Failed to parse Gemini informant payload")
+            return fallback
+
+    async def generate_city_event_copy(
+        self,
+        *,
+        event_name: str,
+        vibe: str,
+        mechanics: list[str],
+        fallback: GeminiCityEventResult,
+    ) -> GeminiCityEventResult:
+        payload = {
+            "event_name": event_name,
+            "vibe": vibe,
+            "mechanics": mechanics,
+        }
+        prompt = (
+            "You are writing a flashy Vice City citywide event bulletin for a Discord crime game. "
+            "Return strict JSON only with keys headline, description, broadcast. "
+            "Do not invent mechanics outside the supplied list. "
+            "Keep each field under 45 words, cinematic, and instantly understandable to players.\n\n"
+            f"Context: {json.dumps(payload, ensure_ascii=True)}"
+        )
+        text = await self._generate_json_text(prompt)
+        if text is None:
+            return fallback
+        try:
+            raw = self._parse_json(text)
+            headline = str(raw.get("headline", "")).strip()
+            description = str(raw.get("description", "")).strip()
+            broadcast = str(raw.get("broadcast", "")).strip()
+            if not headline or not description or not broadcast:
+                raise ValueError("Incomplete Gemini city event payload")
+            return GeminiCityEventResult(headline=headline, description=description, broadcast=broadcast)
+        except Exception:
+            self.last_request_status = "Fallback used: invalid Gemini city event JSON."
+            self.logger.exception("Failed to parse Gemini city event payload")
+            return fallback
+
+    async def _generate_json_text(self, prompt: str) -> str | None:
+        api_key = self.bot.config.gemini_api_key
+        if not api_key:
+            self.last_request_status = "Fallback used: GEMINI_API_KEY is not set."
+            return None
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.bot.config.gemini_model}:generateContent?key={api_key}"
+        )
+        body = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.9,
+                "topP": 0.95,
+                "responseMimeType": "application/json",
+            },
+        }
+        timeout = aiohttp.ClientTimeout(total=8)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, json=body) as response:
+                    if response.status >= 400:
+                        self.last_request_status = f"Fallback used: Gemini HTTP {response.status}."
+                        self.logger.warning("Gemini request failed with status %s", response.status)
+                        return None
+                    payload = await response.json()
+        except Exception as exc:
+            self.last_request_status = f"Fallback used: {type(exc).__name__} during Gemini request."
+            self.logger.exception("Gemini request failed")
+            return None
+        text = self._extract_text(payload)
+        if text is None:
+            self.last_request_status = "Fallback used: Gemini returned no text."
+            return None
+        self.last_request_status = "Gemini request succeeded."
+        return text
+
+    def _extract_text(self, payload: dict[str, Any]) -> str | None:
+        candidates = payload.get("candidates") or []
+        if not candidates:
+            return None
+        content = candidates[0].get("content") or {}
+        for part in content.get("parts", []):
+            text = part.get("text")
+            if text:
+                return str(text)
+        return None
+
+    def _parse_json(self, text: str) -> dict[str, Any]:
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.strip("`")
+            cleaned = cleaned.removeprefix("json").strip()
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start == -1 or end == -1:
+            raise ValueError("No JSON object found")
+        return json.loads(cleaned[start : end + 1])
+
+    def _fallback_negotiation(
+        self,
+        *,
+        member_name: str,
+        gang_name: str,
+        operation_name: str,
+        approach: str,
+        allowed_outcomes: tuple[str, ...],
+    ) -> GeminiNegotiationResult:
+        approach = approach.lower()
+        preferred = {
+            "plead": "reduced_fine",
+            "bribe": "reduced_fine",
+            "bluff": "deal_rejected",
+            "threaten": "extra_heat",
+        }.get(approach, "deal_rejected")
+        outcome = preferred if preferred in allowed_outcomes else allowed_outcomes[0]
+        return GeminiNegotiationResult(
+            outcome=outcome,
+            headline="Interrogation Room",
+            scene=(
+                f"The desk sergeant studies {member_name}'s face, drums two fingers on the file, "
+                f"and weighs the story coming out of {gang_name}'s latest {operation_name} mess."
+            ),
+            officer_line="Talk fast. Vice City is deciding how expensive this mistake becomes.",
+        )
+
+    def _fallback_heist(
+        self,
+        *,
+        phase: str,
+        gang_name: str,
+        crew_names: list[str],
+        success_count: int | None,
+        payout_total: int | None,
+    ) -> GeminiNarrationResult:
+        joined = ", ".join(crew_names) if crew_names else "the crew"
+        if phase == "launch":
+            return GeminiNarrationResult(
+                headline="Casino Job Live",
+                lines=[
+                    f"{gang_name} just kicked the doors in and {joined} are moving on the vault.",
+                    "Vice City cameras are jittering, alarms are humming, and the whole city can feel it.",
+                    "Every second from here on out looks like it was cut from a crime movie.",
+                ],
+            )
+        return GeminiNarrationResult(
+            headline="Casino Job Recap",
+            lines=[
+                f"{gang_name} left the casino with {success_count or 0} clean role hits and a take of {payout_total or 0}.",
+                "The city is already rewriting the story into legend, rumor, and panic.",
+            ],
+        )
