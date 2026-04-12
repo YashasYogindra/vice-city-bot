@@ -291,7 +291,7 @@ class HeistService:
                 )
             )
         gang = await self.bot.repo.get_gang(heist["gang_id"])
-        narration = await self.bot.gemini_service.generate_heist_narration(  # type: ignore[union-attr]
+        narration = await self.bot.groq_service.generate_heist_narration(  # type: ignore[union-attr]
             phase="recap",
             gang_name=gang["name"] if gang else "Unknown Crew",
             crew_names=[result[1] for result in crew_results],
@@ -412,7 +412,7 @@ class HeistService:
             member = guild.get_member(heist.get(role))
             if member is not None:
                 names.append(member.display_name)
-        narration = await self.bot.gemini_service.generate_heist_narration(  # type: ignore[union-attr]
+        narration = await self.bot.groq_service.generate_heist_narration(  # type: ignore[union-attr]
             phase=phase,
             gang_name=gang["name"] if gang else "Unknown Crew",
             crew_names=names,

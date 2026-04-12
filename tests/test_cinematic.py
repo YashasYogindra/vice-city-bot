@@ -5,17 +5,17 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from vicecity.models.cinematic import GeminiInformantTipResult
+from vicecity.models.cinematic import GroqInformantTipResult
 from vicecity.services.city import CityService
-from vicecity.services.gemini_service import GeminiService
+from vicecity.services.groq_service import GroqService
 from vicecity.services.visuals import VisualService
 
 
-class GeminiServiceTests(unittest.IsolatedAsyncioTestCase):
+class GroqServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_informant_tip_returns_fallback_without_api_key(self) -> None:
-        bot = SimpleNamespace(config=SimpleNamespace(gemini_api_key=None, gemini_model="gemini-2.0-flash"))
-        service = GeminiService(bot)
-        fallback = GeminiInformantTipResult(
+        bot = SimpleNamespace(config=SimpleNamespace(groq_api_key=None, groq_model="groq-2.0-flash"))
+        service = GroqService(bot)
+        fallback = GroqInformantTipResult(
             headline="Street Contact",
             tip="The block feels wrong tonight.",
             nudge="Move before everyone else smells it.",
@@ -30,10 +30,10 @@ class GeminiServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, fallback)
 
     async def test_informant_tip_invalid_json_uses_fallback(self) -> None:
-        bot = SimpleNamespace(config=SimpleNamespace(gemini_api_key="test-key", gemini_model="gemini-2.0-flash"))
-        service = GeminiService(bot)
+        bot = SimpleNamespace(config=SimpleNamespace(groq_api_key="test-key", groq_model="groq-2.0-flash"))
+        service = GroqService(bot)
         service._generate_json_text = AsyncMock(return_value="this is not json")  # type: ignore[method-assign]
-        fallback = GeminiInformantTipResult(
+        fallback = GroqInformantTipResult(
             headline="Street Contact",
             tip="A fat vault always leaks a rumor.",
             nudge="Hit the soft edge, not the loud door.",
@@ -48,8 +48,8 @@ class GeminiServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, fallback)
 
     async def test_heist_narration_returns_fallback_without_api_key(self) -> None:
-        bot = SimpleNamespace(config=SimpleNamespace(gemini_api_key=None, gemini_model="gemini-2.0-flash"))
-        service = GeminiService(bot)
+        bot = SimpleNamespace(config=SimpleNamespace(groq_api_key=None, groq_model="groq-2.0-flash"))
+        service = GroqService(bot)
 
         result = await service.generate_heist_narration(
             phase="launch",

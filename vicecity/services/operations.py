@@ -29,6 +29,8 @@ class OperationsService:
         self.active_negotiations: set[str] = set()
 
     async def _raise_if_on_cooldown(self, guild_id: int, user_id: int) -> None:
+        if self.bot.config.disable_cooldowns or OPERATION_COOLDOWN_SECONDS <= 0:
+            return
         retry_after = await self.bot.city_service.operation_cooldown_retry_after(  # type: ignore[union-attr]
             guild_id,
             user_id,
@@ -237,7 +239,7 @@ class OperationsService:
         if context.token not in self.active_negotiations:
             raise InvalidStateError("That negotiation already played out.")
         self.active_negotiations.remove(context.token)
-        result = await self.bot.gemini_service.generate_bust_negotiation(  # type: ignore[union-attr]
+        result = await self.bot.groq_service.generate_bust_negotiation(  # type: ignore[union-attr]
             member_name=context.member_name,
             gang_name=context.gang_name,
             operation_name=context.operation_name,

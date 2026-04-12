@@ -17,7 +17,7 @@ Copilot cannot fully verify without a live Discord server:
 2. Button/select/modal UX
 3. DM validation flows
 4. Heist live narration in channels
-5. Real Gemini responses
+5. Real Groq responses
 
 ## What you need in VS Code
 
@@ -42,7 +42,7 @@ Copilot cannot fully verify without a live Discord server:
 
 ### Optional but recommended
 
-- `GEMINI_API_KEY` for AI scene testing
+- `GROQ_API_KEY` for AI scene testing
 - A dedicated Discord test server
 - A second and third Discord account for co-op testing
 

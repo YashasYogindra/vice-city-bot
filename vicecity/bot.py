@@ -17,7 +17,7 @@ from vicecity.services.bootstrap import BootstrapService
 from vicecity.services.casino import CasinoService
 from vicecity.services.city import CityService
 from vicecity.services.city_events import CityEventDirectorService
-from vicecity.services.gemini_service import GeminiService
+from vicecity.services.groq_service import GroqService
 from vicecity.services.heist import HeistService
 from vicecity.services.heat import HeatService
 from vicecity.services.operations import OperationsService
@@ -57,7 +57,7 @@ class ViceCityBot(commands.Bot):
         self.social_service: SocialService | None = None
         self.heist_service: HeistService | None = None
         self.casino_service: CasinoService | None = None
-        self.gemini_service: GeminiService | None = None
+        self.groq_service: GroqService | None = None
         self.visual_service: VisualService | None = None
         self.event_service: CityEventDirectorService | None = None
 
@@ -73,7 +73,7 @@ class ViceCityBot(commands.Bot):
         self.social_service = SocialService(self)
         self.heist_service = HeistService(self)
         self.casino_service = CasinoService(self)
-        self.gemini_service = GeminiService(self)
+        self.groq_service = GroqService(self)
         self.visual_service = VisualService(self)
         self.event_service = CityEventDirectorService(self)
 
@@ -92,6 +92,17 @@ class ViceCityBot(commands.Bot):
         guild_object = discord.Object(id=self.config.guild_id)
         self.tree.copy_global_to(guild=guild_object)
         await self.tree.sync(guild=guild_object)
+        await self.start_healthcheck_server()
+
+    async def start_healthcheck_server(self) -> None:
+        from aiohttp import web
+        app = web.Application()
+        app.router.add_get('/health', lambda request: web.Response(text="OK", status=200))
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', 8080)
+        await site.start()
+        self.logger.info("Healthcheck server listening on port 8080")
 
     async def on_ready(self) -> None:
         if self.runtime_ready:
@@ -118,9 +129,36 @@ class ViceCityBot(commands.Bot):
         await self.heat_service.rehydrate_active_jails(guild.id)
         await self.war_service.rehydrate_active_wars(guild.id)
         await self.heist_service.rehydrate_active_heists(guild.id)
+        await self.casino_service.rehydrate_wagers(guild.id)
+        await self._catch_up_jobs(guild.id)
         await self.event_service.ensure_active_event(guild.id)
         await self.city_service.refresh_wanted_board(guild.id)
         await self.city_service.refresh_vault(guild.id)
+
+    async def _catch_up_jobs(self, guild_id: int) -> None:
+        # Catch up any scheduled events that passed while bot was offline
+        # Jails
+        from vicecity.utils.time import utcnow, isoformat
+        now = isoformat(utcnow())
+        rows = await self.db.execute_fetchall(
+            "SELECT * FROM jail_records WHERE guild_id = ? AND active = 1 AND release_at <= ?",
+            (guild_id, now)
+        )
+        for row in rows:
+            jail_id, user_id = row["id"], row["user_id"]
+            await self.repo.release_jail_record(jail_id)
+            await self.repo.update_player(guild_id, user_id, jailed_until=None)
+
+        # Wars
+        war_rows = await self.db.execute_fetchall(
+            "SELECT * FROM wars WHERE guild_id = ? AND status = 'active' AND resolve_at <= ?",
+            (guild_id, now)
+        )
+        for row in war_rows:
+            war_id = row["id"]
+            # To resolve, we just trigger the end_war task logic manually, but we need
+            # the war service to resolve it.
+            await self.war_service.end_war(war_id)
 
     async def close(self) -> None:
         if self.scheduler.running:
@@ -132,10 +170,11 @@ class ViceCityBot(commands.Bot):
         handled = await self._handle_error(ctx, error)
         if handled:
             return
-        self.logger.exception("Unhandled command error", exc_info=getattr(error, "original", error))
+        root = self._unwrap_error(error)
+        self.logger.exception("Unhandled command error", exc_info=(type(root), root, root.__traceback__))
         embed = self.embed_factory.danger(
-            "City Interference",
-            "Something went wrong while processing that command. Check the console logs for details.",
+            "Command Error",
+            self._format_error_for_user(root),
         )
         await self._safe_reply(ctx, embed=embed)
 
@@ -143,10 +182,11 @@ class ViceCityBot(commands.Bot):
         handled = await self._handle_error(interaction, error)
         if handled:
             return
-        self.logger.exception("Unhandled app command error", exc_info=getattr(error, "original", error))
+        root = self._unwrap_error(error)
+        self.logger.exception("Unhandled app command error", exc_info=(type(root), root, root.__traceback__))
         embed = self.embed_factory.danger(
-            "City Interference",
-            "Something went wrong while processing that command. Check the console logs for details.",
+            "Command Error",
+            self._format_error_for_user(root),
         )
         await self._safe_interaction_reply(interaction, embed=embed, ephemeral=True)
 
@@ -154,7 +194,7 @@ class ViceCityBot(commands.Bot):
         if isinstance(target, commands.Context) and hasattr(target.command, "on_error"):
             return True
 
-        original = getattr(error, "original", error)
+        original = self._unwrap_error(error)
         if isinstance(original, commands.CommandNotFound):
             return True
 
@@ -193,6 +233,26 @@ class ViceCityBot(commands.Bot):
             embed = self.embed_factory.danger("Action Blocked", str(original))
             return await self._dispatch_error(target, embed)
         return False
+
+    def _unwrap_error(self, error: Exception) -> Exception:
+        current = error
+        visited: set[int] = set()
+        while True:
+            visited.add(id(current))
+            nested = getattr(current, "original", None)
+            if not isinstance(nested, Exception):
+                cause = getattr(current, "__cause__", None)
+                nested = cause if isinstance(cause, Exception) else None
+            if nested is None or id(nested) in visited:
+                return current
+            current = nested
+
+    def _format_error_for_user(self, error: Exception) -> str:
+        message = str(error).strip() or "No details provided."
+        detail = f"{type(error).__name__}: {message}"
+        if len(detail) > 800:
+            detail = detail[:797] + "..."
+        return detail
 
     async def _dispatch_error(self, target: commands.Context | discord.Interaction, embed: discord.Embed) -> bool:
         if isinstance(target, commands.Context):

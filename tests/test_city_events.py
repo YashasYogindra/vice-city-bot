@@ -3,7 +3,7 @@
 Covers:
 - Repository: create, load, expire, and replace active city events.
 - Effects: verify each of the 4 event types applies deterministic modifiers.
-- Gemini fallback: event generation works with no API key.
+- Groq fallback: event generation works with no API key.
 - Embed builder: verify embed output for each event type.
 """
 from __future__ import annotations
@@ -17,11 +17,11 @@ from typing import Any
 
 import pytest
 
-from vicecity.models.events import CityEvent, CityEventEffect, GeminiCityEventResult
+from vicecity.models.events import CityEvent, CityEventEffect, GroqCityEventResult
 from vicecity.repositories.database import Database
 from vicecity.repositories.game_repository import GameRepository
 from vicecity.services.city_events import CityEventDirectorService
-from vicecity.services.gemini_service import GeminiService
+from vicecity.services.groq_service import GroqService
 from vicecity.utils.embeds import EmbedFactory
 from vicecity.utils.time import isoformat, utcnow
 
@@ -238,14 +238,14 @@ class TestCityEventEffects:
         assert result == 95  # maximum ceiling
 
 
-# ── Gemini Fallback Tests ───────────────────────────────────────
+# ── Groq Fallback Tests ───────────────────────────────────────
 
 
-class TestGeminiFallback:
+class TestGroqFallback:
     """Verify event copy generation works without an API key."""
 
     def test_fallback_produces_valid_copy(self) -> None:
-        fallback = GeminiCityEventResult(
+        fallback = GroqCityEventResult(
             headline="Police Sweep",
             description="Police Sweep is live. Operations lose 15 success chance. Operations generate +1 extra Heat.",
             broadcast="Police Sweep just hit the city. Operations lose 15 success chance.",
@@ -267,14 +267,14 @@ class TestGeminiFallback:
 
     def test_trigger_event_uses_fallback_without_api_key(self, repo: GameRepository, run) -> None:
         bot = SimpleNamespace(
-            config=SimpleNamespace(gemini_api_key=None, gemini_model="gemini-2.0-flash"),
+            config=SimpleNamespace(groq_api_key=None, groq_model="groq-2.0-flash"),
             repo=repo,
             scheduler=FakeScheduler(),
             city_service=None,
             embed_factory=EmbedFactory(),
             visual_service=None,
         )
-        bot.gemini_service = GeminiService(bot)  # type: ignore[attr-defined]
+        bot.groq_service = GroqService(bot)  # type: ignore[attr-defined]
         service = CityEventDirectorService(bot)  # type: ignore[arg-type]
 
         event = run(service.trigger_event(GUILD_ID, "police_sweep", announce=False))
@@ -282,7 +282,7 @@ class TestGeminiFallback:
         assert event.event_key == "police_sweep"
         assert event.headline == "Police Sweep"
         assert event.effect.operation_success_delta == -15
-        assert bot.gemini_service.last_request_status == "Fallback used: GEMINI_API_KEY is not set."
+        assert bot.groq_service.last_request_status == "Fallback used: GROQ_API_KEY is not set."
         assert f"city-event:{GUILD_ID}" in bot.scheduler.jobs
 
 

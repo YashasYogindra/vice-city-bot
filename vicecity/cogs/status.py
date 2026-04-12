@@ -24,7 +24,7 @@ class StatusCog(commands.Cog):
 
     @commands.hybrid_command(name="status")
     async def status(self, ctx: commands.Context) -> None:
-        """Show bot uptime, scheduler state, Gemini availability, and active city event."""
+        """Show bot uptime, scheduler state, Groq availability, and active city event."""
         uptime_seconds = (utcnow() - self.bot.start_time).total_seconds()
         uptime_text = format_duration(uptime_seconds)
 
@@ -36,15 +36,15 @@ class StatusCog(commands.Cog):
         else:
             scheduler_text = "Stopped"
 
-        # Gemini availability
-        gemini_key = self.bot.config.gemini_api_key
-        last_request = "Gemini service has not initialized."
-        if self.bot.gemini_service is not None:
-            last_request = self.bot.gemini_service.last_request_status
-        if gemini_key:
-            gemini_text = f"Enabled ({self.bot.config.gemini_model})\nLast request: {last_request}"
+        # Groq availability
+        groq_key = self.bot.config.groq_api_key
+        last_request = "Groq service has not initialized."
+        if self.bot.groq_service is not None:
+            last_request = self.bot.groq_service.last_request_status
+        if groq_key:
+            groq_text = f"Enabled ({self.bot.config.groq_model})\nLast request: {last_request}"
         else:
-            gemini_text = f"Disabled (deterministic fallback active)\nLast request: {last_request}"
+            groq_text = f"Disabled (deterministic fallback active)\nLast request: {last_request}"
 
         # Guild sync target
         guild = self.bot.get_guild(self.bot.config.guild_id)
@@ -65,7 +65,7 @@ class StatusCog(commands.Cog):
         )
         embed.add_field(name="Uptime", value=uptime_text, inline=True)
         embed.add_field(name="Scheduler", value=scheduler_text, inline=True)
-        embed.add_field(name="Gemini AI", value=gemini_text, inline=False)
+        embed.add_field(name="Groq AI", value=groq_text, inline=False)
         embed.add_field(name="Guild Target", value=guild_text, inline=False)
         embed.add_field(name="City Event", value=event_text, inline=False)
         await ctx.send(embed=embed)

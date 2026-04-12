@@ -9,7 +9,7 @@ import discord
 from apscheduler.jobstores.base import JobLookupError
 
 from vicecity.constants import CITY_EVENT_DURATION_HOURS, RACKS_EMOJI
-from vicecity.models.events import CityEvent, CityEventEffect, GeminiCityEventResult
+from vicecity.models.events import CityEvent, CityEventEffect, GroqCityEventResult
 from vicecity.utils.time import isoformat, utcnow
 
 if TYPE_CHECKING:
@@ -97,12 +97,12 @@ class CityEventDirectorService:
         definition = self.catalog[event_key]
         now = utcnow()
         ends_at = now + timedelta(hours=CITY_EVENT_DURATION_HOURS)
-        fallback = GeminiCityEventResult(
+        fallback = GroqCityEventResult(
             headline=definition.name,
             description=f"{definition.name} is live in Vice City. {' '.join(definition.mechanics)}",
             broadcast=f"{definition.name} just hit the city. {' '.join(definition.mechanics)}",
         )
-        copy = await self.bot.gemini_service.generate_city_event_copy(  # type: ignore[union-attr]
+        copy = await self.bot.groq_service.generate_city_event_copy(  # type: ignore[union-attr]
             event_name=definition.name,
             vibe=definition.vibe,
             mechanics=list(definition.mechanics),

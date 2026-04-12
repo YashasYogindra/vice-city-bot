@@ -23,7 +23,7 @@ MODULES = [
     "vicecity.services.operations",
     "vicecity.services.heist",
     "vicecity.services.heat",
-    "vicecity.services.gemini_service",
+    "vicecity.services.groq_service",
     "vicecity.services.visuals",
     "vicecity.services.casino",
     "vicecity.views.action_hub",

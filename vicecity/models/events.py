@@ -47,7 +47,7 @@ class CityEvent:
 
 
 @dataclass(frozen=True, slots=True)
-class GeminiCityEventResult:
+class GroqCityEventResult:
     headline: str
     description: str
     broadcast: str

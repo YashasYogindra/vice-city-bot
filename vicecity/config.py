@@ -15,20 +15,22 @@ class AppConfig:
     database_path: Path
     timezone: str
     log_level: str
-    gemini_api_key: str | None
-    gemini_model: str
+    groq_api_key: str | None
+    groq_model: str
+    disable_cooldowns: bool
 
     @classmethod
     def load(cls) -> "AppConfig":
-        load_dotenv()
+        load_dotenv(override=True)
         token = os.getenv("DISCORD_TOKEN", "").strip()
         guild_id = os.getenv("GUILD_ID", "").strip()
         mayor_role_name = os.getenv("MAYOR_ROLE_NAME", "Mayor").strip() or "Mayor"
         database_path = os.getenv("DATABASE_PATH", "vicecity.db").strip() or "vicecity.db"
-        timezone = os.getenv("TIMEZONE", "Asia/Calcutta").strip() or "Asia/Calcutta"
+        timezone = os.getenv("TIMEZONE", "America/Los_Angeles").strip() or "America/Los_Angeles"
         log_level = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
-        gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip() or None
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip() or "gemini-2.0-flash"
+        groq_api_key = os.getenv("GROQ_API_KEY", "").strip() or None
+        groq_model = os.getenv("GROQ_MODEL", "groq-2.0-flash").strip() or "groq-2.0-flash"
+        disable_cooldowns = os.getenv("DISABLE_COOLDOWNS", "false").strip().lower() in {"1", "true", "yes", "on"}
 
         if not token:
             raise ValueError("DISCORD_TOKEN is required.")
@@ -44,6 +46,7 @@ class AppConfig:
             database_path=Path(database_path).expanduser().resolve(),
             timezone=timezone,
             log_level=log_level,
-            gemini_api_key=gemini_api_key,
-            gemini_model=gemini_model,
+            groq_api_key=groq_api_key,
+            groq_model=groq_model,
+            disable_cooldowns=disable_cooldowns,
         )

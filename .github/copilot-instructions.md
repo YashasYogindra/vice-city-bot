@@ -33,10 +33,10 @@ When asked to verify changes, prefer this order:
 ## Important product behavior
 
 - Keep all economy math deterministic.
-- Gemini is only used for:
+- Groq is only used for:
   - bust negotiation scenes
   - heist narration / recap flavor
-- If Gemini is unavailable, deterministic fallback copy must be used.
+- If Groq is unavailable, deterministic fallback copy must be used.
 - Visual generation must never crash the bot. If Pillow is blocked, degrade gracefully.
 - All user-facing replies should remain embed-first.
 

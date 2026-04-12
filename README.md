@@ -2,7 +2,7 @@
 
 Vice City OS turns one Discord server into a live crime simulation where gangs earn cash, draw Heat, fight over turf, gamble, bribe City Hall, and react to citywide events.
 
-The differentiator is the **City Event Director**: a live event system that rotates Vice City into states like Police Sweep, Black Market Sale, Casino Rush, and Harbor Shipment. Gemini can write the bulletin copy, but every gameplay modifier is deterministic and falls back safely without an API key.
+The differentiator is the **City Event Director**: a live event system that rotates Vice City into states like Police Sweep, Black Market Sale, Casino Rush, and Harbor Shipment. Groq can write the bulletin copy, but every gameplay modifier is deterministic and falls back safely without an API key.
 
 ## Judge Demo Path
 
@@ -51,7 +51,7 @@ The differentiator is the **City Event Director**: a live event system that rota
 
    Expected output: operation success/payout/Heat, shop prices, casino payouts, news, and system status all reflect the current city state.
 
-6. Disable `GEMINI_API_KEY` and trigger another event.
+6. Disable `GROQ_API_KEY` and trigger another event.
 
    Expected output: the event still works with deterministic fallback copy, and `/status` reports the fallback reason.
 
@@ -68,7 +68,7 @@ Current event catalog:
 | Casino Rush | Casino payouts are boosted by 50 percent | `/city event trigger casino_rush` |
 | Harbor Shipment | Operation payouts are boosted by 40 percent | `/city event trigger harbor_shipment` |
 
-Gemini only writes copy for the headline, description, and broadcast. The modifiers are stored as structured JSON in SQLite and applied by service methods, so the economy math stays bounded and testable.
+Groq only writes copy for the headline, description, and broadcast. The modifiers are stored as structured JSON in SQLite and applied by service methods, so the economy math stays bounded and testable.
 
 ## What Is Implemented
 
@@ -91,16 +91,16 @@ Gemini only writes copy for the headline, description, and broadcast. The modifi
 - Quick-action buttons, selects, and modal negotiation flow
 - Live news feed and persistent vault/wanted channels
 
-### Gemini Scope
+### Groq Scope
 
-Gemini is optional and used for bounded flavor text:
+Groq is optional and used for bounded flavor text:
 
 1. Bust negotiation scenes after failed operations
 2. Heist live narration and recap
 3. Street informant tips from real game state
 4. City event headline, description, and broadcast copy
 
-If Gemini is unavailable, every feature uses deterministic fallback output.
+If Groq is unavailable, every feature uses deterministic fallback output.
 
 ## Commands
 
@@ -147,7 +147,7 @@ If Gemini is unavailable, every feature uses deterministic fallback output.
 | `/rat <member> <reason>` | Report another player |
 | `/vote exile <member>` | Start a gang exile vote |
 | `/challenge boss` | Challenge for gang leadership |
-| `/status` | Show uptime, scheduler, Gemini status, guild target, and current event |
+| `/status` | Show uptime, scheduler, Groq status, guild target, and current event |
 | `/help` | Interactive help |
 | `/guide` | Player onboarding guide |
 
@@ -159,7 +159,7 @@ flowchart TD
     Cogs --> Services["vicecity/services"]
     Services --> Repo["GameRepository"]
     Repo --> SQLite["SQLite database"]
-    Services --> Gemini["GeminiService optional copy"]
+    Services --> Groq["GroqService optional copy"]
     Services --> Visuals["VisualService media cards"]
     Services --> Scheduler["APScheduler runtime jobs"]
     Scheduler --> Events["City Event rotation"]
@@ -171,7 +171,7 @@ Key files:
 
 - `vicecity/bot.py`: boot, services, scheduler, command sync, runtime recovery
 - `vicecity/repositories/game_repository.py`: SQLite tables and transactional persistence
-- `vicecity/services/city_events.py`: event catalog, Gemini fallback copy, effect helpers, rotation
+- `vicecity/services/city_events.py`: event catalog, Groq fallback copy, effect helpers, rotation
 - `vicecity/services/operations.py`: operation success, payout, and Heat integration
 - `vicecity/services/city.py`: shop pricing, news, vault, profiles, daily rewards
 - `vicecity/services/casino.py`: casino payout integration
@@ -232,11 +232,11 @@ MAYOR_ROLE_NAME=Mayor
 DATABASE_PATH=vicecity.db
 TIMEZONE=Asia/Calcutta
 LOG_LEVEL=INFO
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.0-flash
+GROQ_API_KEY=
+GROQ_MODEL=groq-2.0-flash
 ```
 
-`GEMINI_API_KEY` is optional. If it is missing or a request fails, deterministic fallback copy is used.
+`GROQ_API_KEY` is optional. If it is missing or a request fails, deterministic fallback copy is used.
 
 ### Run
 
@@ -267,7 +267,7 @@ Manual checks:
 - `/casino slots` and `/casino flip` under Casino Rush credit boosted payouts.
 - `/news` pins the active event.
 - Vault channel includes the Live Event field.
-- `/status` reports uptime, scheduler jobs, Gemini fallback/request status, guild target, and city event.
+- `/status` reports uptime, scheduler jobs, Groq fallback/request status, guild target, and city event.
 
 ## Deployment
 
@@ -283,4 +283,4 @@ docker run --env-file .env vice-city-os
 - The bot is intentionally optimized for a single configured guild for demo reliability.
 - Gameplay modifiers are deterministic and bounded.
 - Visual generation gracefully degrades if Pillow cannot load.
-- Gemini is additive, never required for core gameplay.
+- Groq is additive, never required for core gameplay.

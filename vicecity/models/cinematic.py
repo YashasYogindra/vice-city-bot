@@ -28,7 +28,7 @@ class ActionResult:
 
 
 @dataclass(slots=True)
-class GeminiNegotiationResult:
+class GroqNegotiationResult:
     outcome: str
     headline: str
     scene: str
@@ -36,13 +36,13 @@ class GeminiNegotiationResult:
 
 
 @dataclass(slots=True)
-class GeminiNarrationResult:
+class GroqNarrationResult:
     headline: str
     lines: list[str]
 
 
 @dataclass(slots=True)
-class GeminiInformantTipResult:
+class GroqInformantTipResult:
     headline: str
     tip: str
     nudge: str

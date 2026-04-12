@@ -23,7 +23,7 @@ from vicecity.constants import (
     BLACK_MARKET_ITEMS,
 )
 from vicecity.exceptions import InvalidStateError
-from vicecity.models.cinematic import GeminiInformantTipResult, InformantTipSeed
+from vicecity.models.cinematic import GroqInformantTipResult, InformantTipSeed
 from vicecity.utils.time import isoformat, parse_datetime, utcnow
 
 if TYPE_CHECKING:
@@ -47,6 +47,18 @@ class CityService:
         local_timezone = self._daily_claim_timezone()
         local_now = current_time.astimezone(local_timezone)
         stored_streak = max(0, int(player.get("daily_streak", 0)))
+        if self.bot.config.disable_cooldowns:
+            claim_streak = max(1, stored_streak + 1)
+            reward_amount = self._daily_reward_amount(claim_streak)
+            return {
+                "can_claim": True,
+                "current_streak": stored_streak,
+                "claim_streak": claim_streak,
+                "reward_amount": reward_amount,
+                "next_claim_at": None,
+                "missed_window": False,
+            }
+
         last_claim = parse_datetime(player.get("last_daily_claim_at"))
         current_streak = 0
         claim_streak = 1
@@ -527,12 +539,12 @@ class CityService:
     async def build_tip_embed(self, guild_id: int) -> tuple[discord.Embed, str | None]:
         snapshot = await self.build_informant_snapshot(guild_id)
         seed = self.choose_informant_seed(snapshot)
-        fallback = GeminiInformantTipResult(
+        fallback = GroqInformantTipResult(
             headline=seed.fallback_headline,
             tip=seed.fallback_tip,
             nudge=seed.fallback_nudge,
         )
-        tip = await self.bot.gemini_service.generate_informant_tip(  # type: ignore[union-attr]
+        tip = await self.bot.groq_service.generate_informant_tip(  # type: ignore[union-attr]
             focus=seed.focus,
             facts=seed.facts,
             fallback=fallback,
@@ -751,6 +763,8 @@ class CityService:
         return bool(release_at and release_at > utcnow())
 
     async def operation_cooldown_retry_after(self, guild_id: int, user_id: int, cooldown_seconds: int) -> float:
+        if cooldown_seconds <= 0:
+            return 0
         player = await self.bot.repo.get_player(guild_id, user_id)
         if not player or not player.get("last_operation_at"):
             return 0
@@ -837,7 +851,7 @@ class CityService:
             raise InvalidStateError("You need to join Vice City first.")
         if int(player["heat"]) >= 4 and item_name != "lawyer":
             raise InvalidStateError("The black market shuts you out at Heat 4 and above.")
-        if item_name == "lawyer":
+        if item_name == "lawyer" and not self.bot.config.disable_cooldowns:
             cooldown_until = parse_datetime(player.get("lawyer_cooldown_until"))
             if cooldown_until and cooldown_until > utcnow():
                 raise InvalidStateError("You already used a lawyer recently. Wait for the cooldown.")
@@ -850,10 +864,13 @@ class CityService:
         await self.bot.repo.debit_wallet(guild_id, user_id, final_price)
         if item_name == "lawyer":
             new_heat = await self.bot.heat_service.reduce_heat(guild_id, user_id, 2, reason="Lawyer")  # type: ignore[union-attr]
+            cooldown_until = None
+            if not self.bot.config.disable_cooldowns:
+                cooldown_until = isoformat(utcnow() + timedelta(seconds=LAWYER_COOLDOWN_SECONDS))
             await self.bot.repo.update_player(
                 guild_id,
                 user_id,
-                lawyer_cooldown_until=isoformat(utcnow() + timedelta(seconds=LAWYER_COOLDOWN_SECONDS)),
+                lawyer_cooldown_until=cooldown_until,
             )
             return self.bot.embed_factory.success(
                 "Lawyer Retained",
