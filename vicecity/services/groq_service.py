@@ -192,6 +192,110 @@ class GroqService:
             self.logger.exception("Failed to parse Groq city event payload")
             return fallback
 
+    async def generate_consigliere_advice(
+        self,
+        *,
+        brief: dict,
+    ) -> dict:
+        """Generate strategic gang advice from the AI consigliere."""
+        fallback = self._fallback_consigliere(brief)
+        prompt = (
+            "You are the consigliere (strategic advisor) for a Vice City gang inside a Discord crime simulation game. "
+            "You have been given a full intelligence brief on your gang and all rival gangs. "
+            "Your job is to analyze the game state and give ONE specific, actionable strategic recommendation. "
+            "Do NOT be generic. Reference specific gang names, turf names, player counts, bank balances, and heat levels. "
+            "Sound like a sharp, calculating underboss whispering strategy to the Boss.\n\n"
+            "Return strict JSON only with keys: headline, advice, move.\n"
+            "- headline: A short cinematic title (under 10 words).\n"
+            "- advice: Your strategic analysis of the current situation (under 80 words). Reference real data from the brief.\n"
+            "- move: One specific action the gang should take RIGHT NOW (under 30 words). Be concrete: name a turf to hit, a rival to watch, an item to buy, etc.\n\n"
+            f"Intelligence Brief:\n{json.dumps(brief, ensure_ascii=True, indent=2)}"
+        )
+        text = await self._generate_json_text(prompt)
+        if text is None:
+            return fallback
+        try:
+            raw = self._parse_json(text)
+            headline = str(raw.get("headline", "")).strip()
+            advice = str(raw.get("advice", "")).strip()
+            move = str(raw.get("move", "")).strip()
+            if not headline or not advice or not move:
+                raise ValueError("Incomplete consigliere payload")
+            return {"headline": headline, "advice": advice, "move": move}
+        except Exception:
+            self.last_request_status = "Fallback used: invalid Groq consigliere JSON."
+            self.logger.exception("Failed to parse Groq consigliere payload")
+            return fallback
+
+    def _fallback_consigliere(self, brief: dict) -> dict:
+        """Deterministic fallback advice when Groq is unavailable."""
+        your_gang = brief.get("your_gang", {})
+        rivals = brief.get("rivals", [])
+        your_name = your_gang.get("name", "Your crew")
+        your_bank = your_gang.get("bank_balance", 0)
+        your_turfs = your_gang.get("turf_count", 0)
+        your_members = your_gang.get("member_count", 0)
+        active_war = brief.get("active_war")
+
+        # If in a war, focus on that
+        if active_war:
+            return {
+                "headline": "War Room Briefing",
+                "advice": (
+                    f"{your_name} is locked in a turf war right now. "
+                    f"The gang bank is sitting at {your_bank} Racks. "
+                    "Every soldier who hasn't committed yet is wasted muscle. "
+                    "Buy weapons from the market before committing — each one is a 25% power boost."
+                ),
+                "move": "Get every available member to /assault or /defend NOW, and stock up on weapons first.",
+            }
+
+        # Find the weakest rival
+        if rivals:
+            weakest = min(rivals, key=lambda r: (r.get("member_count", 0), r.get("bank_balance", 0)))
+            richest = max(rivals, key=lambda r: r.get("bank_balance", 0))
+            weakest_turfs = weakest.get("turfs", [])
+            target_turf = weakest_turfs[0] if weakest_turfs else "their territory"
+
+            if your_turfs < 2:
+                return {
+                    "headline": "Expand or Die",
+                    "advice": (
+                        f"{your_name} only holds {your_turfs} turf. That means almost no passive income. "
+                        f"{weakest['name']} is the thinnest crew with {weakest.get('member_count', 0)} members "
+                        f"and {weakest.get('turf_count', 0)} turfs. They're ripe for a hit."
+                    ),
+                    "move": f"Declare war on {target_turf} — {weakest['name']} can't defend it.",
+                }
+
+            if your_bank < 500:
+                return {
+                    "headline": "The Vault Is Thin",
+                    "advice": (
+                        f"{your_name} is running on fumes with only {your_bank} in the gang bank. "
+                        f"Wars cost 250 per commitment, and you can't afford to mobilize. "
+                        "Focus on drug runs and daily claims to stack Racks before making any big moves."
+                    ),
+                    "move": "Tell the crew to run /operate drug medium and /daily, then /gang deposit profits.",
+                }
+
+            return {
+                "headline": "Eyes on the Board",
+                "advice": (
+                    f"{your_name} holds {your_turfs} turfs with {your_bank} in the bank. "
+                    f"{richest['name']} has the fattest war chest at {richest.get('bank_balance', 0)} Racks. "
+                    f"{weakest['name']} is stretched thin across {weakest.get('turf_count', 0)} turfs "
+                    f"with only {weakest.get('member_count', 0)} crew."
+                ),
+                "move": f"Stock weapons, then hit {target_turf} while {weakest['name']} is undermanned.",
+            }
+
+        return {
+            "headline": "Quiet Night",
+            "advice": f"{your_name} should stack Racks while the streets are calm. Run operations, claim dailies, build the war chest.",
+            "move": "Grind /operate drug medium and /daily until the gang bank is thick enough for a big play.",
+        }
+
     async def _generate_json_text(self, prompt: str) -> str | None:
         api_key = self.bot.config.groq_api_key
         if not api_key:

@@ -27,6 +27,12 @@ class HeatService:
                 await self.release_jail(jail["id"], guild_id, jail["user_id"], announce=False)
             else:
                 self.schedule_jail_release(jail["id"], guild_id, jail["user_id"], release_at)
+                
+        # Catch any players who hit Heat 5 but escaped arrest due to a restart
+        for player in await self.bot.repo.list_joined_players(guild_id):
+            if int(player["heat"]) >= 5:
+                if not await self.bot.city_service.member_is_jailed(guild_id, player["user_id"]):
+                    await self._resolve_most_wanted_grace(guild_id, player["user_id"])
 
     async def release_expired_jails(self, guild_id: int) -> None:
         for jail in await self.bot.repo.list_active_jails(guild_id):

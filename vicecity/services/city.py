@@ -420,6 +420,98 @@ class CityService:
             "news": news_rows,
         }
 
+    async def build_consigliere_brief(self, guild_id: int, user_id: int) -> dict[str, Any]:
+        """Build a comprehensive game-state intelligence brief for the AI consigliere."""
+        player = await self.bot.repo.get_player(guild_id, user_id)
+        if player is None or not player["is_joined"]:
+            raise InvalidStateError("You need to join Vice City first.")
+        if not player.get("gang_id"):
+            raise InvalidStateError("You are not assigned to a gang.")
+
+        settings = await self.bot.repo.ensure_guild_settings(guild_id)
+        gangs = await self.bot.repo.list_gangs(guild_id)
+        member_counts = await self.bot.repo.count_joined_players_by_gang(guild_id)
+        turfs = await self.bot.repo.list_turfs(guild_id)
+        wars = await self.bot.repo.list_active_wars(guild_id)
+        wanted = await self.bot.repo.list_wanted_players(guild_id)
+        all_players = await self.bot.repo.list_joined_players(guild_id)
+
+        # Build per-gang intel
+        gang_intel: dict[int, dict[str, Any]] = {}
+        for gang in gangs:
+            owned_turfs = [turf["name"] for turf in turfs if turf["owner_gang_id"] == gang["id"]]
+            gang_members = [p for p in all_players if p.get("gang_id") == gang["id"]]
+            heat_levels = [int(p["heat"]) for p in gang_members]
+            avg_heat = sum(heat_levels) / len(heat_levels) if heat_levels else 0
+            high_heat_count = sum(1 for h in heat_levels if h >= 3)
+            jailed_count = sum(1 for p in gang_members if p.get("jailed_until"))
+            gang_intel[gang["id"]] = {
+                "name": gang["name"],
+                "bank_balance": int(gang["bank_balance"]),
+                "member_count": int(member_counts.get(gang["id"], 0)),
+                "turf_count": len(owned_turfs),
+                "turfs": owned_turfs,
+                "average_heat": round(avg_heat, 1),
+                "high_heat_members": high_heat_count,
+                "jailed_members": jailed_count,
+                "boss_exists": gang.get("boss_user_id") is not None,
+            }
+
+        your_gang_id = player["gang_id"]
+        your_gang = gang_intel.get(your_gang_id, {})
+        rivals = [info for gid, info in gang_intel.items() if gid != your_gang_id]
+
+        # Active war intel for your gang
+        active_war = None
+        your_war = await self.bot.repo.get_active_war_for_gang(guild_id, your_gang_id)
+        if your_war:
+            turf = await self.bot.repo.get_turf(your_war["turf_id"])
+            opponent_id = your_war["defender_gang_id"] if your_war["attacker_gang_id"] == your_gang_id else your_war["attacker_gang_id"]
+            opponent_info = gang_intel.get(opponent_id, {})
+            active_war = {
+                "your_side": "attacking" if your_war["attacker_gang_id"] == your_gang_id else "defending",
+                "turf_name": turf["name"] if turf else "Unknown",
+                "opponent_name": opponent_info.get("name", "Unknown"),
+                "opponent_bank": opponent_info.get("bank_balance", 0),
+                "opponent_members": opponent_info.get("member_count", 0),
+            }
+
+        # City event info
+        city_event = None
+        if self.bot.event_service is not None:
+            event = await self.bot.event_service.get_active_event(guild_id)
+            if event is not None:
+                defn = self.bot.event_service.event_definition(event.event_key)
+                city_event = {
+                    "name": defn.name,
+                    "effects": list(defn.mechanics),
+                }
+
+        # Wanted intel
+        wanted_summary = [
+            {"gang_name": w.get("gang_name", "Unknown"), "heat": int(w["heat"])}
+            for w in wanted[:5]
+        ]
+
+        # Your personal state
+        your_state = {
+            "rank": player["rank"],
+            "wallet": int(player["wallet"]),
+            "heat": int(player["heat"]),
+            "xp": int(player["xp"]),
+        }
+
+        return {
+            "your_gang": your_gang,
+            "your_state": your_state,
+            "rivals": rivals,
+            "active_war": active_war,
+            "city_event": city_event,
+            "treasury_balance": int(settings.get("treasury_balance", 0)),
+            "tax_rate": int(settings.get("tax_rate", DEFAULT_TAX_RATE)),
+            "wanted_players": wanted_summary,
+        }
+
     def choose_informant_seed(self, snapshot: dict[str, Any]) -> InformantTipSeed:
         gangs = sorted(
             snapshot.get("gangs", []),
