@@ -42,7 +42,8 @@ class TestRename(unittest.TestCase):
 
     def test_no_vicecity_references_in_constants(self) -> None:
         import sinbot.constants as c
-        source = open(c.__file__).read()
+        with open(c.__file__, encoding="utf-8") as handle:
+            source = handle.read()
         self.assertNotIn("Vice City OS", source)
         self.assertNotIn("vicecity", source.lower().replace("sinbot", ""))
 

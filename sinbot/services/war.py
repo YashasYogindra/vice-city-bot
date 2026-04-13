@@ -164,10 +164,10 @@ class WarService:
             a_id = a_boss_row["user_id"] if a_boss_row else (attackers[0]["user_id"] if attackers else 0)
             d_id = d_boss_row["user_id"] if d_boss_row else (defenders[0]["user_id"] if defenders else 0)
             
-            from sinbot.services.fighting import FightEngine
+            from sinbot.services.fighting import FightAction, FightEngine
             engine = FightEngine()
             state = engine.create_fight(a_id, d_id)
-            actions = list(engine._BEATS.keys())
+            actions = list(FightAction)
             while not state.is_over:
                 engine.resolve_round(state, self.random.choice(actions), self.random.choice(actions))
             

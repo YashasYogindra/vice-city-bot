@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -225,6 +226,8 @@ class SocialService:
         if player is None or not player["is_joined"]:
             raise InvalidStateError("You need a city wallet before you can bribe the Mayor.")
         mayor = member.guild.owner
+        if mayor is None:
+            raise InvalidStateError("The Mayor could not be found.")
         bribe_id = await self.bot.repo.create_bribe(member.guild.id, member.id, mayor.id, amount)
         view = BribeDecisionView(timeout=300)
         embed = self.bot.embed_factory.standard(
@@ -235,31 +238,54 @@ class SocialService:
             dm = await mayor.create_dm()
             message = await dm.send(embed=embed, view=view)
             view.message = message
-            await view.wait()
         except discord.HTTPException:
             await self.bot.repo.update_bribe(bribe_id, status="undeliverable")
             raise InvalidStateError("The Mayor could not be reached by DM.")
 
-        if view.choice == "accepted":
-            mayor_profile = await self.bot.repo.ensure_player(member.guild.id, mayor.id, rank="Mayor", is_joined=0, wallet=0)
-            try:
-                await self.bot.repo.debit_wallet(member.guild.id, member.id, amount)
-            except Exception:
-                await self.bot.repo.update_bribe(bribe_id, status="failed")
-                raise
-            await self.bot.repo.credit_wallet(member.guild.id, mayor_profile["user_id"], amount)
-            await self.bot.repo.update_bribe(bribe_id, status="accepted")
-            try:
-                await member.send(
-                    embed=self.bot.embed_factory.reward(
-                        "Bribe Accepted",
-                        f"The Mayor accepted your **{amount}** Racks bribe.",
-                    )
-                )
-            except discord.HTTPException:
-                pass
-            return self.bot.embed_factory.reward("Bribe Accepted", f"The Mayor took your **{amount}** Racks.")
-
-        status = "ignored" if view.choice == "ignored" else "expired"
-        await self.bot.repo.update_bribe(bribe_id, status=status)
+        # Process the mayor decision without blocking the command response.
+        asyncio.create_task(self._finalize_bribe(member, mayor, amount, bribe_id, view))
         return self.bot.embed_factory.standard("Bribe Sent", "The Mayor has been notified. What happens next is up to them.")
+
+    async def _finalize_bribe(
+        self,
+        member: discord.Member,
+        mayor: discord.Member,
+        amount: int,
+        bribe_id: int,
+        view: BribeDecisionView,
+    ) -> None:
+        try:
+            await view.wait()
+            if view.choice == "accepted":
+                mayor_profile = await self.bot.repo.ensure_player(member.guild.id, mayor.id, rank="Mayor", is_joined=0, wallet=0)
+                try:
+                    await self.bot.repo.debit_wallet(member.guild.id, member.id, amount)
+                except Exception:
+                    await self.bot.repo.update_bribe(bribe_id, status="failed")
+                    try:
+                        await member.send(
+                            embed=self.bot.embed_factory.danger(
+                                "Bribe Failed",
+                                "The Mayor accepted, but you no longer had enough cash to pay the bribe.",
+                            )
+                        )
+                    except discord.HTTPException:
+                        pass
+                    return
+                await self.bot.repo.credit_wallet(member.guild.id, mayor_profile["user_id"], amount)
+                await self.bot.repo.update_bribe(bribe_id, status="accepted")
+                try:
+                    await member.send(
+                        embed=self.bot.embed_factory.reward(
+                            "Bribe Accepted",
+                            f"The Mayor accepted your **{amount}** Racks bribe.",
+                        )
+                    )
+                except discord.HTTPException:
+                    pass
+                return
+
+            status = "ignored" if view.choice == "ignored" else "expired"
+            await self.bot.repo.update_bribe(bribe_id, status=status)
+        except Exception:
+            self.bot.logger.exception("Failed to finalize bribe request", exc_info=True)
