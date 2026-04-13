@@ -1,0 +1,1 @@
+"""SinBot Discord bot package."""

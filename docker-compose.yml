@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: sinbot
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - sinbot_data:/app/data
+    environment:
+      - DATABASE_PATH=/app/data/sinbot.db
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+
+volumes:
+  sinbot_data:

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 tools/verify_syntax.py)",
+      "Bash(find . -name \"*.py\" -not -path \"./.venv*\" -exec sed -i '' 's/from vicecity\\\\./from sinbot./g; s/import vicecity\\\\./import sinbot./g; s/from vicecity /from sinbot /g; s/import vicecity /import sinbot /g' {} +)",
+      "Bash(find sinbot:*)",
+      "Bash(find sinbot/services sinbot/cogs -name '*.py' -exec sed -i '' -e 's/join Vice City first with !join/join the city first with \\\\/join/g' -e 's/join Vice City before/join the city before/g' -e 's/join Vice City first/join the city first/g' -e 's/joined Vice City/joined the city/g' -e 's/a Vice City profile/a city profile/g' -e 's/Vice City profile/city profile/g' -e 's/Vice City profiles/city profiles/g' -e 's/a Vice City wallet/a city wallet/g' -e 's/Vice City wallet/city wallet/g' -e 's/exist in Vice City/exist in the city/g' -e 's/Vice City tax/City tax/g' -e 's/in Vice City until/in the city until/g' -e 's/joined Vice City yet/joined the city yet/g' -e 's/Vice City exile/SinBot exile/g' -e 's/Vice City test gang switch/SinBot test gang switch/g' -e 's/Vice City gang assignment/SinBot gang assignment/g' '{}' +)",
+      "Bash(python3 tools/import_smoke.py)",
+      "Bash(python3 -m pytest tests/ -v)",
+      "Bash(pip3 install:*)",
+      "Bash(python3 -m pytest tests/ -q)",
+      "Bash(python3 -m pytest tests/ -v --tb=long)",
+      "Bash(wc -l sinbot/*.py sinbot/**/*.py)",
+      "Bash(wc -l main.py sinbot/*.py sinbot/cogs/*.py sinbot/models/*.py sinbot/repositories/*.py sinbot/services/*.py sinbot/utils/*.py sinbot/views/*.py tests/*.py tools/*.py)",
+      "Bash(python3 -c ':*)",
+      "Bash(python3 -m pytest tests/ -v --tb=short)"
+    ]
+  }
+}

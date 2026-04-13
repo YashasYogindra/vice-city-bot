@@ -1,0 +1,21 @@
+# Virtual Environments
+.venv/
+.venv312/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+
+# Database
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Secrets
+.env
+.pytest_cache/
