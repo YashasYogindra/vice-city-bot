@@ -3,9 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import discord
+from discord import app_commands
+from discord.ext import commands
 
 from sinbot.constants import BLACK_MARKET_ITEMS, DRUG_RUN_CONFIG, HEIST_ROLES
 from sinbot.exceptions import SinBotError
+from sinbot.utils.time import format_duration
 
 if TYPE_CHECKING:
     from sinbot.bot import SinBot
@@ -136,6 +139,26 @@ class OwnerLockedView(discord.ui.View):
             await send_interaction_message(
                 interaction,
                 embed=self.bot.embed_factory.danger("Action Blocked", str(error)),
+                ephemeral=True,
+            )
+            return
+        if isinstance(error, commands.CommandOnCooldown):
+            await send_interaction_message(
+                interaction,
+                embed=self.bot.embed_factory.danger(
+                    "Cooldown Active",
+                    f"Try again in {format_duration(error.retry_after)}.",
+                ),
+                ephemeral=True,
+            )
+            return
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await send_interaction_message(
+                interaction,
+                embed=self.bot.embed_factory.danger(
+                    "Cooldown Active",
+                    f"Try again in {format_duration(error.retry_after)}.",
+                ),
                 ephemeral=True,
             )
             return
