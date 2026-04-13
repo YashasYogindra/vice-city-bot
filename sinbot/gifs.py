@@ -16,6 +16,10 @@
 #   • One URL per key — copy-paste, save, restart the bot.
 # =============================================================
 
+from __future__ import annotations
+
+import re
+
 
 # ── CORE ─────────────────────────────────────────────────────
 
@@ -231,3 +235,46 @@ RAT_SUCCESS = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExejFma3ZrMDFhcGM5
 
 # Rat report — false tip dismissed
 RAT_FALSE_TIP = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcGtoY3dsdng1Mnh1Ym9wMGgydzF5c295aWQ0OTBocDdqNGIxbDFndCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/ziNUOin6TC30HRQVHk/giphy.gif"
+
+
+# Keep empty keys empty, but normalize non-empty Giphy links to stable direct media URLs.
+_GIPHY_V1_RE = re.compile(
+	r"^https?://(?:media\d*\.)?giphy\.com/media/v1\.[^/]+/([^/?#]+)/giphy\.(gif|webp|mp4)(?:\?.*)?$",
+	flags=re.IGNORECASE,
+)
+_GIPHY_DIRECT_RE = re.compile(
+	r"^https?://(?:media\d*\.)?giphy\.com/media/([^/?#]+)/giphy\.(gif|webp|mp4)(?:\?.*)?$",
+	flags=re.IGNORECASE,
+)
+_I_GIPHY_RE = re.compile(
+	r"^https?://i\.giphy\.com/(?:media/)?([^/?#]+)\.(gif|webp|mp4)(?:\?.*)?$",
+	flags=re.IGNORECASE,
+)
+
+
+def _normalize_media_url(url: str) -> str:
+	value = url.strip()
+	if not value:
+		return ""
+
+	match = _GIPHY_V1_RE.match(value)
+	if match:
+		media_id, ext = match.group(1), match.group(2).lower()
+		return f"https://media.giphy.com/media/{media_id}/giphy.{ext}"
+
+	match = _GIPHY_DIRECT_RE.match(value)
+	if match:
+		media_id, ext = match.group(1), match.group(2).lower()
+		return f"https://media.giphy.com/media/{media_id}/giphy.{ext}"
+
+	match = _I_GIPHY_RE.match(value)
+	if match:
+		media_id, ext = match.group(1), match.group(2).lower()
+		return f"https://media.giphy.com/media/{media_id}/giphy.{ext}"
+
+	return value
+
+
+for _name, _value in tuple(globals().items()):
+	if _name.isupper() and isinstance(_value, str):
+		globals()[_name] = _normalize_media_url(_value)
