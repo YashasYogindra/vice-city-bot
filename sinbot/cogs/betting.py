@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 import random
 from typing import Literal
 from typing import TYPE_CHECKING
 
 import discord
+from dotenv import load_dotenv
 from discord import app_commands
 from discord.ext import commands
 
@@ -20,6 +22,8 @@ if TYPE_CHECKING:
 
 class BettingCog(commands.Cog):
     """IPL match fetcher and team betting commands."""
+
+    ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
     def __init__(self, bot: "SinBot") -> None:
         self.bot = bot
@@ -46,6 +50,8 @@ class BettingCog(commands.Cog):
         await ctx.send("Use `/bet ipl` to fetch the current IPL match, then `/bet place team1 <amount>` or `/bet place team2 <amount>`.")
 
     async def _fetch_ipl_matches(self) -> list[dict[str, str]]:
+        # Reload env from project root so CRICKET_API_KEY works regardless of launch cwd.
+        load_dotenv(dotenv_path=self.ENV_PATH, override=True)
         api_key = (os.getenv("CRICKET_API_KEY") or "").strip()
         if not api_key:
             self.cricket_data_source = "mock"
@@ -222,6 +228,9 @@ class BettingCog(commands.Cog):
         """(Admin) Resolve all active bets for a given winning team."""
         if ctx.interaction is not None:
             await ctx.defer()
+        if ctx.guild is None:
+            raise commands.CheckFailure("This command can only be used in a server.")
+        guild = ctx.guild
         winner = winner.upper()
         count = 0
         total_payout = 0
@@ -232,10 +241,10 @@ class BettingCog(commands.Cog):
                 amount = int(bet["amount"])
                 payout = amount * 2
                 try:
-                    await self.bot.repo.credit_wallet(ctx.guild.id, user_id, payout)  # type: ignore[union-attr]
+                    await self.bot.repo.credit_wallet(guild.id, user_id, payout)
                     count += 1
                     total_payout += payout
-                    user = ctx.guild.get_member(user_id)
+                    user = guild.get_member(user_id)
                     try:
                         if user:
                             await user.send(f"🏏 **IPL Result:** {winner} WON! Your bet hit and you won **{payout}** Racks!")
